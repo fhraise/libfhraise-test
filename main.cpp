@@ -4,10 +4,9 @@
 auto lib = libfhraise_symbols();
 auto root = lib->kotlin.root;
 
-libfhraise_kref_Result get_register_result() {
+void *get_result() {
     auto success = root.Result.RegisterResult.Success._instance();
-    auto result = new libfhraise_kref_Result(success.pinned);
-    return *result;
+    return success.pinned;
 }
 
 int main() {
@@ -44,7 +43,7 @@ int main() {
     unsigned char *data;
     int data_size;
 
-    root.Client.receive(client, &action, &data, &data_size, (void *) get_register_result);
+    root.Client.receive(client, &action, &data, &data_size, (void *) get_result);
 
     for (int i = 0; i < data_size; ++i) {
         std::cout << "Data[" << i << "]: " << static_cast<int>(data[i]) << " " << data[i] << std::endl;
