@@ -1,53 +1,71 @@
 #include <iostream>
-#include "libfhraise_api.h"
 
-auto lib = libfhraise_symbols();
-auto root = lib->kotlin.root;
+#include "libfhraisepy_api.h"
+#include "throwable.h"
 
-void *get_result() {
-    auto success = root.Result.RegisterResult.Success._instance();
-    return success.pinned;
+auto lib = libfhraisepy_symbols();
+auto root = lib->kotlin.root.xyz.xfqlittlefan.fhraise.py;
+
+auto logger = root.Logger.Logger("libfhraise_test");
+
+auto get_result() {
+    auto [pinned] = root.Message.Register.Result.Success._instance();
+    return pinned;
 }
 
 int main() {
-    auto client = root.Client.Client("localhost", 8080);
+    const auto client = root.Client.Client("localhost", 11451);
 
-    char **actions;
-    int actions_size;
+    Throwable *throwable_ptr;
 
-    root.Client.getActionEntries(client, &actions, &actions_size);
+    root.Logger.debug(logger, "Connecting to the server.");
 
-    for (int i = 0; i < actions_size; ++i) {
-        std::cout << "Action[" << i << "]: " << actions[i] << std::endl;
-    }
+    if (const auto connection_result = root.Client.connect(client, &throwable_ptr); !connection_result) {
+        auto [type, ref, message, stacktrace, stacktraceSize] = *throwable_ptr;
 
-    char *exception_type;
-    char *exception_message;
-    char **exception_stacktrace;
-    int exception_stacktrace_size;
-
-    auto connect_result = root.Client.connect(client, &exception_type, &exception_message, &exception_stacktrace,
-                                              &exception_stacktrace_size);
-
-    if (!connect_result) {
-        std::cout << "Failed to connect to the server:" << std::endl;
-        std::cout << "Exception type: " << exception_type << std::endl;
-        std::cout << "Exception message: " << exception_message << std::endl;
-        for (int i = 0; i < exception_stacktrace_size; ++i) {
-            std::cout << "Exception stacktrace[" << i << "]: " << exception_stacktrace[i] << std::endl;
+        root.Logger.error(logger, "Error connecting to the server.");
+        root.Logger.error(logger, ("Error type: " + std::string(type)).c_str());
+        root.Logger.error(logger, ("Error message: " + std::string(message)).c_str());
+        for (int i = 0; i < stacktraceSize; ++i) {
+            root.Logger.error(logger, stacktrace[i]);
         }
+
         return 1;
     }
 
-    unsigned char action;
-    unsigned char *data;
-    int data_size;
+    root.Logger.debug(logger, "Receiving data from the server.");
 
-    root.Client.receive(client, &action, &data, &data_size, (void *) get_result);
+    while (true) {
+        char *message_type;
+        libfhraisepy_KNativePtr ref;
 
-    for (int i = 0; i < data_size; ++i) {
-        std::cout << "Data[" << i << "]: " << static_cast<int>(data[i]) << " " << data[i] << std::endl;
+        if (const auto receive = root.Client.receive(client, &message_type, &ref, &throwable_ptr,
+                                                     reinterpret_cast<void *>(get_result));
+            !receive) {
+            auto [type, ref, message, stacktrace, stacktraceSize] = *throwable_ptr;
+
+            root.Logger.error(logger, "Error receiving data from the server.");
+            root.Logger.error(logger, ("Error type: " + std::string(type)).c_str());
+            root.Logger.error(logger, ("Error message: " + std::string(message)).c_str());
+            for (int i = 0; i < stacktraceSize; ++i) {
+                root.Logger.error(logger, stacktrace[i]);
+            }
+
+            return 1;
+        }
+
+        std::string message_type_string(message_type);
+
+        root.Logger.debug(logger, ("Received message type: " + message_type_string).c_str());
+
+        if (message_type_string == "xyz.xfqlittlefan.fhraise.py.Message.Register.Frame") {
+            const auto ref_frame = new libfhraisepy_kref_xyz_xfqlittlefan_fhraise_py_Message_Register_Frame(ref);
+            const auto call_id = root.Message.Register.Frame.get_callId(*ref_frame);
+            auto content = root.Message.Register.Frame.get_content(*ref_frame);
+
+            root.Logger.debug(logger, ("Received call ID: " + std::string(call_id)).c_str());
+
+            delete &ref_frame;
+        }
     }
-
-    return 0;
 }
